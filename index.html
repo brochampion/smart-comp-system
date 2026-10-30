@@ -75,8 +75,7 @@ h1{text-align:center;margin:8px 0 2px;font-size:1.8rem;letter-spacing:.5px}
   <div class="sub">Control your relays from anywhere</div>
 
   <div class="conn">
-    <input id="key" placeholder="device key" maxlength="32" autocomplete="off" autocapitalize="off">
-    <button id="cb" class="cb idle" onclick="connectEsp()"><span class="dot"></span><span id="ct">Connect to ESP32</span></button>
+    <button id="cb" class="cb idle" onclick="connectEsp()"><span class="dot"></span><span id="ct">Connecting...</span></button>
   </div>
 
   <div class="bar">
@@ -92,7 +91,7 @@ h1{text-align:center;margin:8px 0 2px;font-size:1.8rem;letter-spacing:.5px}
   </div>
 
   <div class="grid" id="grid"></div>
-  <div class="hint">Enter the device key shown on the ESP32 setup page, then press the button. It turns green when the ESP32 is online.</div>
+  <div class="hint">This page connects to your ESP32 automatically. The button turns green when the ESP32 is online.</div>
 </div>
 
 <script>
@@ -103,6 +102,7 @@ const DEVICES = [
   {n:'Pump',   t:'pump'}
 ];
 const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
+const DEVICE_ID = 'tmx00vhn7p3j583nw4zt';   // must match DEVICE_ID in the ESP32 sketch
 // -------------------------------------------------------------------------------------------
 
 const $ = id => document.getElementById(id);
@@ -144,7 +144,7 @@ function setBtn(mode) {
   const b = $('cb'), t = $('ct');
   b.className = 'cb ' + mode;
   t.textContent = {
-    idle: 'Connect to ESP32',
+    idle: 'Connecting...',
     wait: 'Waiting for ESP32...',
     err: 'Server unreachable - retrying',
     on: 'Connected to ESP32 \u2713'
@@ -158,14 +158,8 @@ function setOnline(v) {
 }
 
 function connectEsp() {
-  const k = $('key').value.trim().toLowerCase();
-  if (!/^[a-z0-9]{6,32}$/.test(k)) {
-    alert('Enter the device key from the ESP32 setup page (6-32 letters/numbers).');
-    return;
-  }
-  try { localStorage.setItem('sc_key', k); } catch (e) {}
   if (client) client.end(true);
-  base = 'smartcomp/' + k;
+  base = 'smartcomp/' + DEVICE_ID;
   espOnline = false;
   document.body.classList.add('offline');
   setBtn('wait');
@@ -208,10 +202,7 @@ function toggle(i) { send(i, payloadFor(!st[i])); }
 function allSet(on) { send('all', payloadFor(on)); }
 
 buildCards();
-try {
-  const saved = localStorage.getItem('sc_key');
-  if (saved) { $('key').value = saved; connectEsp(); }
-} catch (e) {}
+connectEsp();
 </script>
 </body>
 </html>
