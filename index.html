@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Comp System</title>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+:root{--bg:#0b1020;--card:#151c33;--txt:#e8ecff;--mut:#8791b8;--on:#ffd54a;--water:#3ec6ff;--green:#22c55e}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,sans-serif;background:radial-gradient(circle at 50% 0,#1a2350,var(--bg) 60%);color:var(--txt);min-height:100vh;padding:20px}
+.wrap{max-width:1000px;margin:0 auto}
+h1{text-align:center;margin:8px 0 2px;font-size:1.8rem;letter-spacing:.5px}
+.sub{text-align:center;color:var(--mut);font-size:.9rem;margin-bottom:20px}
+
+.conn{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:0 auto 22px;max-width:560px}
+.conn input{flex:1 1 180px;padding:14px;border-radius:12px;border:2px solid #2a3358;background:#10162c;color:var(--txt);font-size:1rem;text-align:center;letter-spacing:2px;text-transform:lowercase}
+.cb{flex:1 1 260px;display:flex;align-items:center;justify-content:center;gap:10px;padding:14px 18px;border:0;border-radius:12px;font-size:1rem;font-weight:700;color:#fff;cursor:pointer;transition:.3s}
+.cb .dot{width:12px;height:12px;border-radius:50%;background:#fff}
+.cb.idle{background:#394264}
+.cb.wait{background:#d97706}.cb.wait .dot{animation:blink 1s infinite}
+.cb.err{background:#dc2626}
+.cb.on{background:var(--green);box-shadow:0 0 24px rgba(34,197,94,.55)}
+.cb.on .dot{animation:pulse 1.4s infinite}
+@keyframes blink{50%{opacity:.2}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.8)}100%{box-shadow:0 0 0 12px rgba(255,255,255,0)}}
+
+.bar{display:flex;gap:8px;max-width:560px;margin:0 auto 18px}
+.bar button,.bar select{flex:1;padding:13px;border-radius:12px;border:0;font-size:.95rem;background:#222c52;color:var(--txt);cursor:pointer}
+.bar button.all{background:linear-gradient(135deg,#ffb300,#ff6d00);color:#111;font-weight:700}
+
+.grid{display:grid;grid-template-columns:1fr;gap:16px;transition:.4s}
+@media(min-width:560px){.grid{grid-template-columns:repeat(3,1fr)}}
+.offline .grid,.offline .bar{opacity:.35;pointer-events:none}
+
+.card{background:var(--card);border-radius:22px;padding:22px 10px 16px;text-align:center;position:relative;overflow:hidden;transition:.4s;border:2px solid transparent;cursor:pointer;user-select:none}
+.card:hover{transform:translateY(-3px)}
+.card.on{border-color:var(--on);box-shadow:0 0 30px rgba(255,213,74,.35)}
+.card.pump.on{border-color:var(--water);box-shadow:0 0 30px rgba(62,198,255,.35)}
+.card.pop{animation:pop .6s}
+@keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
+.ripple{position:absolute;left:50%;top:40%;width:20px;height:20px;border-radius:50%;background:rgba(255,213,74,.5);transform:translate(-50%,-50%) scale(0);animation:rip .8s ease-out forwards;pointer-events:none}
+.pump .ripple{background:rgba(62,198,255,.5)}
+@keyframes rip{to{transform:translate(-50%,-50%) scale(14);opacity:0}}
+.ic{width:110px;height:110px}
+.glass{fill:#2a3358;stroke:#4b5686;stroke-width:2;transition:.5s}
+.base{fill:#4b5686;transition:.5s}
+.rays{opacity:0;stroke:var(--on);stroke-width:3;stroke-linecap:round;transform-origin:32px 24px;transition:.4s}
+.on .glass{fill:var(--on);stroke:#fff3b0;filter:drop-shadow(0 0 10px var(--on))}
+.on .rays{opacity:1;animation:spin 6s linear infinite,flick 1.2s ease-in-out infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes flick{50%{stroke-width:4.5}}
+.pump.on .glass{fill:var(--water);stroke:#b8ecff;filter:drop-shadow(0 0 10px var(--water))}
+.fan{transform-origin:21px 32px}
+.on .fan{animation:spin .6s linear infinite}
+.pipe{fill:#2a3358;transition:.5s}
+.on .pipe{fill:#1b6f94}
+.drop{fill:var(--water);opacity:0}
+.on .drop{animation:flow 1s linear infinite}
+.on .d2{animation-delay:.33s}.on .d3{animation-delay:.66s}
+@keyframes flow{0%{transform:translateX(0);opacity:0}20%{opacity:1}100%{transform:translateX(22px);opacity:0}}
+.name{font-weight:700;font-size:1.15rem;margin-top:6px}
+.st{font-size:.85rem;color:var(--mut);height:20px}
+.on .st{color:var(--txt)}
+.pill{display:inline-block;margin-top:8px;width:56px;height:30px;border-radius:20px;background:#2a3358;position:relative;transition:.3s}
+.pill:after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.3s}
+.on .pill{background:#ffb300}.pump.on .pill{background:#1aa8e0}
+.on .pill:after{left:29px}
+.hint{text-align:center;color:var(--mut);font-size:.8rem;margin-top:22px}
+</style>
+</head>
+<body class="offline">
+<div class="wrap">
+  <h1>Smart Comp System</h1>
+  <div class="sub">Control your relays from anywhere</div>
+
+  <div class="conn">
+    <input id="key" placeholder="device key" maxlength="32" autocomplete="off" autocapitalize="off">
+    <button id="cb" class="cb idle" onclick="connectEsp()"><span class="dot"></span><span id="ct">Connect to ESP32</span></button>
+  </div>
+
+  <div class="bar">
+    <button class="all" onclick="allSet(true)">All ON</button>
+    <button onclick="allSet(false)">All OFF</button>
+    <select id="tm" title="Auto-off timer">
+      <option value="0">Auto-off: never</option>
+      <option value="10">Auto-off: 10s</option>
+      <option value="30">Auto-off: 30s</option>
+      <option value="60">Auto-off: 1 min</option>
+      <option value="300">Auto-off: 5 min</option>
+    </select>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div class="hint">Enter the device key shown on the ESP32 setup page, then press the button. It turns green when the ESP32 is online.</div>
+</div>
+
+<script>
+// ----- edit these to match your hardware (same order as the pins in the ESP32 sketch) -----
+const DEVICES = [
+  {n:'Bulb 1', t:'bulb'},
+  {n:'Bulb 2', t:'bulb'},
+  {n:'Pump',   t:'pump'}
+];
+const BROKER = 'wss://broker.hivemq.com:8884/mqtt';
+// -------------------------------------------------------------------------------------------
+
+const $ = id => document.getElementById(id);
+const st = DEVICES.map(() => false);
+let client = null, base = '', espOnline = false;
+
+const bulbSvg = `<svg viewBox="0 0 64 64" class="ic"><g class="rays"><line x1="32" y1="2" x2="32" y2="-2"/><line x1="8" y1="24" x2="2" y2="24"/><line x1="56" y1="24" x2="62" y2="24"/><line x1="14" y1="6" x2="10" y2="2"/><line x1="50" y1="6" x2="54" y2="2"/></g><path class="glass" d="M32 8a16 16 0 0 0-9 29v7h18v-7a16 16 0 0 0-9-29z"/><rect class="base" x="24" y="46" width="16" height="4" rx="2"/><rect class="base" x="27" y="52" width="10" height="4" rx="2"/></svg>`;
+const pumpSvg = `<svg viewBox="0 0 64 64" class="ic"><rect class="pipe" x="36" y="28" width="26" height="8"/><circle class="drop" cx="40" cy="32" r="2.5"/><circle class="drop d2" cx="40" cy="32" r="2.5"/><circle class="drop d3" cx="40" cy="32" r="2.5"/><circle class="glass" cx="21" cy="32" r="17"/><g class="fan"><path d="M21 32L21 19L26 24ZM21 32L34 32L29 37ZM21 32L21 45L16 40ZM21 32L8 32L13 27Z" fill="#0b1020"/></g></svg>`;
+
+function buildCards() {
+  const g = $('grid');
+  g.innerHTML = '';
+  DEVICES.forEach((d, i) => {
+    const el = document.createElement('div');
+    el.className = 'card ' + d.t;
+    el.id = 'c' + i;
+    el.innerHTML = (d.t === 'pump' ? pumpSvg : bulbSvg) +
+      `<div class="name">${d.n}</div><div class="st" id="s${i}">OFF</div><div class="pill"></div>`;
+    el.onclick = () => toggle(i);
+    g.appendChild(el);
+  });
+}
+
+function render(i, animate) {
+  const el = $('c' + i);
+  const wasOn = el.classList.contains('on');
+  el.classList.toggle('on', st[i]);
+  $('s' + i).textContent = st[i] ? (DEVICES[i].t === 'pump' ? 'RUNNING' : 'ON') : 'OFF';
+  if (animate && st[i] && !wasOn) {
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    const r = document.createElement('div');
+    r.className = 'ripple';
+    el.appendChild(r);
+    setTimeout(() => r.remove(), 900);
+  }
+}
+
+function setBtn(mode) {
+  const b = $('cb'), t = $('ct');
+  b.className = 'cb ' + mode;
+  t.textContent = {
+    idle: 'Connect to ESP32',
+    wait: 'Waiting for ESP32...',
+    err: 'Server unreachable - retrying',
+    on: 'Connected to ESP32 \u2713'
+  }[mode];
+}
+
+function setOnline(v) {
+  espOnline = v;
+  document.body.classList.toggle('offline', !v);
+  setBtn(v ? 'on' : (client && client.connected ? 'wait' : 'err'));
+}
+
+function connectEsp() {
+  const k = $('key').value.trim().toLowerCase();
+  if (!/^[a-z0-9]{6,32}$/.test(k)) {
+    alert('Enter the device key from the ESP32 setup page (6-32 letters/numbers).');
+    return;
+  }
+  try { localStorage.setItem('sc_key', k); } catch (e) {}
+  if (client) client.end(true);
+  base = 'smartcomp/' + k;
+  espOnline = false;
+  document.body.classList.add('offline');
+  setBtn('wait');
+
+  const c = client = mqtt.connect(BROKER, {
+    reconnectPeriod: 3000,
+    connectTimeout: 8000,
+    clientId: 'web-' + Math.random().toString(16).slice(2)
+  });
+
+  c.on('connect', () => {
+    if (c !== client) return;
+    setBtn('wait');
+    c.subscribe([base + '/status', base + '/state/#']);
+  });
+  c.on('message', (topic, msg) => {
+    if (c !== client) return;
+    const m = msg.toString();
+    if (topic === base + '/status') {
+      setOnline(m === 'online');
+    } else if (topic.startsWith(base + '/state/')) {
+      const i = parseInt(topic.split('/').pop(), 10);
+      if (i >= 0 && i < DEVICES.length) { st[i] = (m === '1'); render(i, true); }
+    }
+  });
+  c.on('close', () => { if (c === client) setOnline(false); });
+}
+
+function send(target, payload) {
+  if (!client || !client.connected || !espOnline) return;
+  client.publish(base + '/cmd/' + target, payload);
+}
+
+function payloadFor(on) {
+  const secs = parseInt($('tm').value, 10);
+  return on ? (secs > 0 ? '1:' + secs : '1') : '0';
+}
+
+function toggle(i) { send(i, payloadFor(!st[i])); }
+function allSet(on) { send('all', payloadFor(on)); }
+
+buildCards();
+try {
+  const saved = localStorage.getItem('sc_key');
+  if (saved) { $('key').value = saved; connectEsp(); }
+} catch (e) {}
+</script>
+</body>
+</html>
